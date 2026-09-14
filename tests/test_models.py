@@ -27,7 +27,7 @@ import os
 import logging
 import unittest
 from decimal import Decimal
-from service.models import Product, Category, db
+from service.models import Product, Category, db, init_db, DataValidationError
 from service import app
 from tests.factories import ProductFactory
 
@@ -185,3 +185,125 @@ class TestProductModel(unittest.TestCase):
         self.assertEqual(found.count(), count)
         for product in found:
             self.assertEqual(product.category, category)
+
+    def test_find_by_price(self):
+        """It should Find Products by Price"""
+        products = ProductFactory.create_batch(10)
+        for product in products:
+            product.create()
+        price = products[0].price
+        count = len([product for product in products if product.price == price])
+        found = Product.find_by_price(price)
+        self.assertEqual(found.count(), count)
+        for product in found:
+            self.assertEqual(product.price, price)
+
+    def test_find_by_price_string(self):
+        """It should Find Products by Price when price is a string"""
+        products = ProductFactory.create_batch(5)
+        for product in products:
+            product.create()
+        price = str(products[0].price)
+        count = len([product for product in products if str(product.price) == price])
+        found = Product.find_by_price(price)
+        self.assertEqual(found.count(), count)
+        for product in found:
+            self.assertEqual(str(product.price), price)
+
+    def test_find_by_price_quoted_string(self):
+        """It should Find Products by Price when price is a quoted string"""
+        products = ProductFactory.create_batch(5)
+        for product in products:
+            product.create()
+        price = f'"{products[0].price}"'
+        count = len([product for product in products if str(product.price) == products[0].price.__str__()])
+        found = Product.find_by_price(price)
+        self.assertEqual(found.count(), count)
+
+    def test_find_not_found(self):
+        """It should not Find a Product that does not exist"""
+        product = Product.find(9999)
+        self.assertIsNone(product)
+
+    def test_update_a_product_no_id(self):
+        """It should not Update a Product with no ID"""
+        product = ProductFactory()
+        product.id = None
+        with self.assertRaises(DataValidationError):
+            product.update()
+
+    def test_serialize_a_product(self):
+        """It should Serialize a Product"""
+        product = ProductFactory()
+        product.create()
+        serial_product = product.serialize()
+        self.assertIsNotNone(serial_product)
+        self.assertEqual(serial_product["id"], product.id)
+        self.assertEqual(serial_product["name"], product.name)
+        self.assertEqual(serial_product["description"], product.description)
+        self.assertEqual(serial_product["price"], str(product.price))
+        self.assertEqual(serial_product["available"], product.available)
+        self.assertEqual(serial_product["category"], product.category.name)
+
+    def test_deserialize_a_product(self):
+        """It should Deserialize a Product"""
+        product = ProductFactory()
+        product.create()
+        serial_product = product.serialize()
+        new_product = Product()
+        new_product.deserialize(serial_product)
+        self.assertEqual(new_product.name, product.name)
+        self.assertEqual(new_product.description, product.description)
+        self.assertEqual(new_product.price, product.price)
+        self.assertEqual(new_product.available, product.available)
+        self.assertEqual(new_product.category, product.category)
+
+    def test_deserialize_missing_data(self):
+        """It should not Deserialize a Product with missing data"""
+        product = ProductFactory()
+        serial_product = product.serialize()
+        del serial_product["name"]
+        new_product = Product()
+        with self.assertRaises(DataValidationError):
+            new_product.deserialize(serial_product)
+
+    def test_deserialize_bad_data(self):
+        """It should not Deserialize bad data"""
+        data = "this is not a dictionary"
+        product = Product()
+        with self.assertRaises(DataValidationError):
+            product.deserialize(data)
+
+    def test_deserialize_bad_available(self):
+        """It should not Deserialize a bad available value"""
+        product = ProductFactory()
+        serial_product = product.serialize()
+        serial_product["available"] = "not a boolean"
+        new_product = Product()
+        with self.assertRaises(DataValidationError):
+            new_product.deserialize(serial_product)
+
+    def test_deserialize_bad_category(self):
+        """It should not Deserialize a bad category value"""
+        product = ProductFactory()
+        serial_product = product.serialize()
+        serial_product["category"] = "NOT_A_CATEGORY"
+        new_product = Product()
+        with self.assertRaises(DataValidationError):
+            new_product.deserialize(serial_product)
+
+    def test_init_db_function(self):
+        """It should initialize the database using the module-level init_db"""
+        from service.models import init_db
+        init_db(app)
+        # If no exception was raised, the database was initialized
+        self.assertTrue(True)
+
+    def test_bad_category_enum_access(self):
+        """It should raise DataValidationError for invalid category enum access"""
+        product = ProductFactory()
+        serial_product = product.serialize()
+        serial_product["category"] = "INVALID_ENUM_VALUE"
+        new_product = Product()
+        with self.assertRaises(DataValidationError):
+            new_product.deserialize(serial_product)
