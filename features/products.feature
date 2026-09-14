@@ -76,6 +76,8 @@ Scenario: Update a Product
     And I should see "Fedora" in the results
     And I should not see "Hat" in the results
 
+
+
 Scenario: List all products
     When I visit the "Home Page"
     And I press the "Clear" button
